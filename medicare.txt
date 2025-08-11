@@ -1,0 +1,2683 @@
+import React, { useState, useEffect, createContext, useContext } from 'react';
+
+// --- Cart Context ---
+// Creates a Context for the cart state to be accessible throughout the component tree.
+const CartContext = createContext();
+
+// Cart Provider component manages the global state for cart items and orders.
+const CartProvider = ({ children }) => {
+  const [cartItems, setCartItems] = useState([]); // State to hold items currently in the cart
+  const [orders, setOrders] = useState([]); // State to hold a history of placed orders
+
+  // Adds an item to the cart, updating quantity if the item already exists.
+  const addToCart = (item) => {
+    setCartItems((prevItems) => {
+      const existingItem = prevItems.find((i) => i.name === item.name);
+      if (existingItem) {
+        // If item already exists, increment its quantity
+        return prevItems.map((i) =>
+          i.name === item.name ? { ...i, quantity: i.quantity + 1 } : i
+        );
+      } else {
+        // Otherwise, add the new item with a quantity of 1
+        return [...prevItems, { ...item, quantity: 1 }];
+      }
+    });
+  };
+
+  // Removes an item completely from the cart based on its name.
+  const removeFromCart = (itemName) => {
+    setCartItems((prevItems) => prevItems.filter((item) => item.name !== itemName));
+  };
+
+  // Updates the quantity of a specific item in the cart. Removes the item if quantity drops to 0 or less.
+  const updateQuantity = (itemName, newQuantity) => {
+    if (newQuantity <= 0) {
+      removeFromCart(itemName); // Remove item if new quantity is zero or negative
+    } else {
+      setCartItems((prevItems) =>
+        prevItems.map((item) =>
+          item.name === itemName ? { ...item, quantity: newQuantity } : item
+        )
+      );
+    }
+  };
+
+  // Clears all items from the cart.
+  const clearCart = () => {
+    setCartItems([]);
+  };
+
+  // Simulates placing an order, adds it to orders history, and clears the current cart.
+  const placeOrder = (cartItems, deliveryDetails) => {
+    const newOrder = {
+      id: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`, // Generates a unique order ID
+      items: cartItems,
+      totalAmount: cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+      deliveryDetails: deliveryDetails,
+      status: 'Processing', // Initial status of the order
+      orderDate: new Date().toLocaleString(), // Timestamp of the order
+    };
+    setOrders((prevOrders) => [...prevOrders, newOrder]); // Adds the new order to the history
+    clearCart(); // Clears the cart after order placement
+    return newOrder; // Returns the newly created order object
+  };
+
+  return (
+    <CartContext.Provider
+      value={{ cartItems, addToCart, removeFromCart, updateQuantity, clearCart, orders, placeOrder }}
+    >
+      {children}
+    </CartContext.Provider>
+  );
+};
+
+// --- Payment Modal Component ---
+// Displays a modal for simulating payment processing.
+const PaymentModal = ({ show, onClose, amount, item, onPaymentSuccess }) => {
+  const [loading, setLoading] = useState(false); // Manages loading state during payment processing
+  const [paymentStatus, setPaymentStatus] = useState(null); // 'success', 'failed', or null
+
+  // Simulates the payment processing logic with a delay.
+  const handleProcessPayment = () => {
+    setLoading(true); // Set loading to true when payment starts
+    setPaymentStatus(null); // Reset payment status
+    setTimeout(() => {
+      setPaymentStatus('success'); // Simulate successful payment
+      setLoading(false); // End loading state
+      if (onPaymentSuccess) {
+        onPaymentSuccess(); // Call callback for successful payment
+      }
+    }, 2000); // 2 second delay for simulation
+  };
+
+  // Resets modal state when it's closed.
+  useEffect(() => {
+    if (!show) {
+      setLoading(false);
+      setPaymentStatus(null);
+    }
+  }, [show]);
+
+  if (!show) return null; // Don't render if not visible
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-8 shadow-xl max-w-md w-full relative">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-semibold"
+        >
+          &times; {/* Close button */}
+        </button>
+        <h2 className="text-2xl font-bold text-gray-900 mb-4 text-center">
+          {/* Dynamic modal title based on payment status */}
+          {paymentStatus === 'success' ? 'Payment Successful!' : paymentStatus === 'failed' ? 'Payment Failed!' : 'Confirm Payment'}
+        </h2>
+
+        {paymentStatus === null && ( // Content displayed during initial and loading states
+          <>
+            <p className="text-gray-700 text-center mb-6">
+              You are about to pay for: <span className="font-semibold">{item}</span>
+            </p>
+            <p className="text-4xl font-bold text-blue-600 text-center mb-8">
+              ₹{amount}
+            </p>
+            {loading ? ( // Loading spinner when processing
+              <div className="flex justify-center items-center py-4">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+                <span className="ml-4 text-blue-600 font-semibold">Processing Payment...</span>
+              </div>
+            ) : ( // Pay Now button
+              <button
+                onClick={handleProcessPayment}
+                className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition-colors font-semibold"
+              >
+                Pay Now
+              </button>
+            )}
+          </>
+        )}
+
+        {paymentStatus === 'success' && ( // Content displayed on successful payment
+          <div className="text-center">
+            <div className="text-6xl mb-4">✅</div> {/* Success emoji */}
+            <p className="text-lg text-gray-700 mb-6">Your payment for <span className="font-semibold">{item}</span> of ₹{amount} was successful!</p>
+            <button
+              onClick={onClose}
+              className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition-colors font-semibold"
+            >
+              Done
+            </button>
+          </div>
+        )}
+
+        {paymentStatus === 'failed' && ( // Content displayed on failed payment
+          <div className="text-center">
+            <div className="text-6xl mb-4">❌</div> {/* Failure emoji */}
+            <p className="text-lg text-gray-700 mb-6">Payment failed for <span className="font-semibold">{item}</span>. Please try again.</p>
+            <button
+              onClick={handleProcessPayment}
+              className="w-full bg-red-600 text-white py-3 rounded-xl hover:bg-red-700 transition-colors font-semibold"
+            >
+              Retry Payment
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- Symptom Checker Page Component ---
+// Allows users to input symptoms and get simulated potential conditions and next steps.
+const SymptomCheckerPage = ({ onBack }) => {
+  const [symptomsInput, setSymptomsInput] = useState(''); // State for user's symptom input
+  const [loadingResults, setLoadingResults] = useState(false); // Loading state for analysis
+  const [results, setResults] = useState(null); // Stores analysis results: { conditions: [], nextSteps: '' }
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Mock data for symptom-to-condition mapping
+  const mockSymptomData = {
+    'fever, cough': {
+      conditions: [
+        { name: 'Common Cold', severity: 'low', disclaimer: 'Usually resolves in a few days.', link: '#' },
+        { name: 'Flu', severity: 'medium', disclaimer: 'May require rest and hydration.', link: '#' },
+        { name: 'Bronchitis', severity: 'medium', disclaimer: 'Consult a doctor if symptoms persist.', link: '#' },
+      ],
+      nextSteps: 'Consult a General Physician for diagnosis and treatment.',
+    },
+    'chest pain, shortness of breath': {
+      conditions: [
+        { name: 'Heart Attack', severity: 'high', disclaimer: 'Seek immediate medical attention.', link: '#' },
+        { name: 'Anxiety Attack', severity: 'medium', disclaimer: 'May mimic heart symptoms, but still requires evaluation.', link: '#' },
+        { name: 'Pneumonia', severity: 'high', disclaimer: 'Requires urgent medical care.', link: '#' },
+      ],
+      nextSteps: 'Seek IMMEDIATE EMERGENCY CARE. Call 108 or go to the nearest hospital.',
+    },
+    'headache, dizziness': {
+      conditions: [
+        { name: 'Migraine', severity: 'medium', disclaimer: 'Can be managed with medication and rest.', link: '#' },
+        { name: 'Dehydration', severity: 'low', disclaimer: 'Increase fluid intake.', link: '#' },
+        { name: 'Vertigo', severity: 'medium', disclaimer: 'Consult an ENT specialist.', link: '#' },
+      ],
+      nextSteps: 'Consider consulting a General Physician or a Neurologist if symptoms are severe or persistent.',
+    },
+    'abdominal pain, nausea': {
+      conditions: [
+        { name: 'Gastritis', severity: 'medium', disclaimer: 'Dietary changes and medication may help.', link: '#' },
+        { name: 'Food Poisoning', severity: 'medium', disclaimer: 'Stay hydrated, seek medical advice if severe.', link: '#' },
+        { name: 'Appendicitis', severity: 'high', disclaimer: 'Requires urgent surgical evaluation.', link: '#' },
+      ],
+      nextSteps: 'Consult a General Physician. If pain is severe or worsens, seek emergency care.',
+    },
+  };
+
+  // Handles the symptom checking process.
+  const handleCheckSymptoms = () => {
+    setLoadingResults(true); // Start loading animation
+    setResults(null); // Clear previous results
+    setConfirmationMessage({ type: 'info', text: 'Analyzing symptoms...' }); // Show analysis message
+
+    // Normalize input symptoms for matching with mock data
+    const normalizedSymptoms = symptomsInput.toLowerCase().split(',').map(s => s.trim()).sort().join(', ');
+
+    // Simulate API call delay for symptom analysis
+    setTimeout(() => {
+      const foundResults = mockSymptomData[normalizedSymptoms]; // Look up in mock data
+      if (foundResults) {
+        setResults(foundResults); // Set results if a match is found
+        setConfirmationMessage({ type: 'success', text: 'Analysis complete!' }); // Success message
+      } else {
+        // Default message if no direct match
+        setResults({
+          conditions: [{ name: 'Unknown Condition', severity: 'low', disclaimer: 'No specific conditions found for these symptoms in our database.', link: '#' }],
+          nextSteps: 'Consult a General Physician for a proper diagnosis.',
+        });
+        setConfirmationMessage({ type: 'info', text: 'No direct match found, providing general advice.' });
+      }
+      setLoadingResults(false); // End loading
+      setTimeout(() => setConfirmationMessage(null), 3000); // Clear message after 3 seconds
+    }, 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-4xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error/info messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' :
+              confirmationMessage.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">AI-Powered Symptom Checker</h1>
+            <p className="text-xl text-gray-600">Enter your symptoms to get preliminary insights and recommended next steps.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Enter Your Symptoms</h3>
+            <textarea
+              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 mb-6"
+              rows="4"
+              placeholder="e.g., fever, cough, headache, sore throat"
+              value={symptomsInput}
+              onChange={(e) => { setSymptomsInput(e.target.value); setResults(null); setConfirmationMessage(null); }}
+            ></textarea>
+            <button
+              onClick={handleCheckSymptoms}
+              disabled={loadingResults || symptomsInput.trim() === ''} // Disable if loading or input is empty
+              className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                loadingResults || symptomsInput.trim() === '' ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {loadingResults ? 'Analyzing...' : 'Check Symptoms'}
+            </button>
+            <p className="text-sm text-gray-500 mt-4 text-center">
+              Disclaimer: This is for informational purposes only and not a substitute for professional medical advice.
+            </p>
+          </div>
+
+          {results && ( // Display results if available
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">Potential Conditions & Next Steps</h3>
+              <div className="space-y-6">
+                {results.conditions.map((condition, index) => (
+                  <div key={index} className="border-b border-gray-200 pb-4 last:border-b-0">
+                    <h4 className="text-xl font-bold text-blue-600 mb-2">{condition.name}</h4>
+                    <p className="text-gray-700 text-sm mb-2">{condition.disclaimer}</p>
+                    <p className={`text-sm font-semibold ${
+                      condition.severity === 'high' ? 'text-red-600' :
+                      condition.severity === 'medium' ? 'text-orange-600' : 'text-green-600'
+                    }`}>
+                      Severity: {condition.severity.charAt(0).toUpperCase() + condition.severity.slice(1)}
+                    </p>
+                    {condition.link && (
+                      <a href={condition.link} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm mt-1 inline-block">
+                        Learn More
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                <h4 className="font-bold text-blue-800 mb-2">Recommended Next Steps:</h4>
+                <p className="text-blue-700">{results.nextSteps}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- New Health Reminders Page Component ---
+// Allows users to set various health-related reminders.
+const RemindersPage = ({ onBack }) => {
+  const [reminders, setReminders] = useState([]); // State to store user-defined reminders
+  const [reminderType, setReminderType] = useState('medication'); // Type of reminder to add
+  const [medicationName, setMedicationName] = useState('');
+  const [medicationDosage, setMedicationDosage] = useState('');
+  const [medicationTime, setMedicationTime] = useState('');
+  const [appointmentDetails, setAppointmentDetails] = useState('');
+  const [appointmentDate, setAppointmentDate] = useState('');
+  const [vaccineName, setVaccineName] = useState('');
+  const [vaccineDate, setVaccineDate] = useState('');
+  const [checkupType, setCheckupType] = useState('');
+  const [checkupDate, setCheckupDate] = useState('');
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Adds a new reminder based on the selected type and input fields.
+  const addReminder = () => {
+    let newReminder = null;
+    if (reminderType === 'medication' && medicationName && medicationDosage && medicationTime) {
+      newReminder = {
+        id: Date.now(),
+        type: 'Medication',
+        details: `${medicationName} (${medicationDosage}) at ${medicationTime}`,
+        date: 'Daily', // Simplified for demo purposes
+        status: 'Active'
+      };
+      // Clear fields after adding
+      setMedicationName('');
+      setMedicationDosage('');
+      setMedicationTime('');
+    } else if (reminderType === 'appointment' && appointmentDetails && appointmentDate) {
+      newReminder = {
+        id: Date.now(),
+        type: 'Appointment',
+        details: `${appointmentDetails} on ${appointmentDate}`,
+        date: appointmentDate,
+        status: 'Upcoming'
+      };
+      setAppointmentDetails('');
+      setAppointmentDate('');
+    } else if (reminderType === 'vaccination' && vaccineName && vaccineDate) {
+      newReminder = {
+        id: Date.now(),
+        type: 'Vaccination',
+        details: `${vaccineName} on ${vaccineDate}`,
+        date: vaccineDate,
+        status: 'Due'
+      };
+      setVaccineName('');
+      setVaccineDate('');
+    } else if (reminderType === 'checkup' && checkupType && checkupDate) {
+      newReminder = {
+        id: Date.now(),
+        type: 'Health Check-up',
+        details: `${checkupType} on ${checkupDate}`,
+        date: checkupDate,
+        status: 'Scheduled'
+      };
+      setCheckupType('');
+      setCheckupDate('');
+    }
+
+    if (newReminder) {
+      setReminders((prev) => [...prev, newReminder]); // Add new reminder to the list
+      setConfirmationMessage({ type: 'success', text: `${newReminder.type} reminder added!` });
+      setTimeout(() => setConfirmationMessage(null), 2000); // Clear message
+    } else {
+      setConfirmationMessage({ type: 'error', text: 'Please fill all required fields for the selected reminder type.' });
+      setTimeout(() => setConfirmationMessage(null), 3000); // Clear message
+    }
+  };
+
+  // Deletes a reminder from the list.
+  const deleteReminder = (id) => {
+    setReminders((prev) => prev.filter(r => r.id !== id));
+    setConfirmationMessage({ type: 'success', text: 'Reminder deleted!' });
+    setTimeout(() => setConfirmationMessage(null), 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-4xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error/info messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' :
+              confirmationMessage.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Health Reminders</h1>
+            <p className="text-xl text-gray-600">Never miss a medication, appointment, or check-up again.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Add New Reminder</h3>
+            <div className="mb-4">
+              <label htmlFor="reminder-type" className="block text-gray-700 font-semibold mb-2">Reminder Type</label>
+              <select
+                id="reminder-type"
+                value={reminderType}
+                onChange={(e) => setReminderType(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="medication">Medication</option>
+                <option value="appointment">Appointment</option>
+                <option value="vaccination">Vaccination</option>
+                <option value="checkup">Health Check-up</option>
+              </select>
+            </div>
+
+            {reminderType === 'medication' && ( // Fields for Medication reminder
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label htmlFor="med-name" className="block text-gray-700 font-semibold mb-2">Medication Name</label>
+                  <input type="text" id="med-name" value={medicationName} onChange={(e) => setMedicationName(e.target.value)} placeholder="e.g., Paracetamol" className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+                <div>
+                  <label htmlFor="med-dosage" className="block text-gray-700 font-semibold mb-2">Dosage/Frequency</label>
+                  <input type="text" id="med-dosage" value={medicationDosage} onChange={(e) => setMedicationDosage(e.target.value)} placeholder="e.g., 500mg, Twice a day" className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+                <div>
+                  <label htmlFor="med-time" className="block text-gray-700 font-semibold mb-2">Time</label>
+                  <input type="time" id="med-time" value={medicationTime} onChange={(e) => setMedicationTime(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+              </div>
+            )}
+
+            {reminderType === 'appointment' && ( // Fields for Appointment reminder
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label htmlFor="appt-details" className="block text-gray-700 font-semibold mb-2">Appointment Details</label>
+                  <input type="text" id="appt-details" value={appointmentDetails} onChange={(e) => setAppointmentDetails(e.target.value)} placeholder="e.g., Dr. Sharma, Cardiology" className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+                <div>
+                  <label htmlFor="appt-date" className="block text-gray-700 font-semibold mb-2">Date & Time</label>
+                  <input type="datetime-local" id="appt-date" value={appointmentDate} onChange={(e) => setAppointmentDate(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+              </div>
+            )}
+
+            {reminderType === 'vaccination' && ( // Fields for Vaccination reminder
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label htmlFor="vaccine-name" className="block text-gray-700 font-semibold mb-2">Vaccine Name</label>
+                  <input type="text" id="vaccine-name" value={vaccineName} onChange={(e) => setVaccineName(e.target.value)} placeholder="e.g., Flu Shot" className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+                <div>
+                  <label htmlFor="vaccine-date" className="block text-gray-700 font-semibold mb-2">Due Date</label>
+                  <input type="date" id="vaccine-date" value={vaccineDate} onChange={(e) => setVaccineDate(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+              </div>
+            )}
+
+            {reminderType === 'checkup' && ( // Fields for Health Check-up reminder
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label htmlFor="checkup-type" className="block text-gray-700 font-semibold mb-2">Check-up Type</label>
+                  <input type="text" id="checkup-type" value={checkupType} onChange={(e) => setCheckupType(e.target.value)} placeholder="e.g., Annual Physical" className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+                <div>
+                  <label htmlFor="checkup-date" className="block text-gray-700 font-semibold mb-2">Due Date</label>
+                  <input type="date" id="checkup-date" value={checkupDate} onChange={(e) => setCheckupDate(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl" />
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={addReminder}
+              className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors"
+            >
+              Add Reminder
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Your Reminders</h3>
+            {reminders.length === 0 ? (
+              <p className="text-gray-600 text-center">No reminders set yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {reminders.map((reminder) => (
+                  <div key={reminder.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div>
+                      <p className="font-bold text-gray-900">{reminder.type}: {reminder.details}</p>
+                      <p className="text-sm text-gray-600">Date: {reminder.date} | Status: {reminder.status}</p>
+                    </div>
+                    <button
+                      onClick={() => deleteReminder(reminder.id)}
+                      className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-100 transition-colors"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- New Health Records Page Component ---
+// Allows users to manage their medical history, lab reports, and vaccination records.
+const HealthRecordsPage = ({ onBack }) => {
+  const [labReports, setLabReports] = useState([]); // Stores uploaded lab report file data (URLs)
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Mock data for medical history, prescription history, and vaccination records.
+  // In a real app, this would be fetched from a secure backend.
+  const medicalHistory = {
+    allergies: [],
+    pastIllnesses: [],
+    surgeries: [],
+    familyHistory: '',
+  };
+
+  const prescriptionHistory = [];
+
+  const vaccinationRecords = [];
+
+  // Handles uploading a new lab report file.
+  const handleLabReportUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        // Add the new report to the list, storing its data URL and name
+        setLabReports((prevReports) => [...prevReports, { id: Date.now(), src: reader.result, name: file.name }]);
+        setConfirmationMessage({ type: 'success', text: `Lab report '${file.name}' uploaded!` });
+        setTimeout(() => setConfirmationMessage(null), 2000);
+      };
+      reader.readAsDataURL(file); // Reads file as a data URL for display
+    } else {
+      setConfirmationMessage({ type: 'error', text: 'Failed to upload lab report.' });
+      setTimeout(() => setConfirmationMessage(null), 2000);
+    }
+  };
+
+  // Handles deleting a lab report.
+  const handleDeleteLabReport = (id) => {
+    setLabReports((prevReports) => prevReports.filter(report => report.id !== id));
+    setConfirmationMessage({ type: 'success', text: 'Lab report deleted!' });
+    setTimeout(() => setConfirmationMessage(null), 2000);
+  };
+
+  // Simulates securely sharing health records.
+  const handleShareRecords = () => {
+    setConfirmationMessage({ type: 'info', text: 'Simulating secure sharing of your health records...' });
+    setTimeout(() => {
+      setConfirmationMessage({ type: 'success', text: 'Records shared securely!' });
+      setTimeout(() => setConfirmationMessage(null), 2000);
+    }, 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-6xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error/info messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' :
+              confirmationMessage.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Health Records</h1>
+            <p className="text-xl text-gray-600">Manage your medical history, lab reports, and prescriptions securely.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Your Medical History</h3>
+            <div className="space-y-4 text-gray-700">
+              <p><span className="font-semibold">Allergies:</span> {medicalHistory.allergies.join(', ') || 'None'}</p>
+              <p><span className="font-semibold">Past Illnesses:</span> {medicalHistory.pastIllnesses.join(', ') || 'None'}</p>
+              <p><span className="font-semibold">Surgeries:</span> {medicalHistory.surgeries.join(', ') || 'None'}</p>
+              <p><span className="font-semibold">Family History:</span> {medicalHistory.familyHistory || 'Not specified'}</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Lab Reports</h3>
+            <div className="mb-4">
+              <label htmlFor="lab-report-upload" className="w-full inline-block bg-blue-600 text-white py-3 px-4 rounded-xl text-center font-semibold cursor-pointer hover:bg-blue-700 transition-colors">
+                Upload New Lab Report (PDF, Image)
+              </label>
+              <input
+                type="file"
+                id="lab-report-upload"
+                accept="image/*,.pdf"
+                onChange={handleLabReportUpload}
+                className="hidden"
+              />
+            </div>
+            {labReports.length === 0 ? (
+              <p className="text-gray-600 text-center">No lab reports uploaded yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                {labReports.map((report) => (
+                  <div key={report.id} className="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xl">📄</span>
+                      <span className="text-gray-800 font-medium truncate">{report.name}</span>
+                    </div>
+                    <a href={report.src} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-sm ml-2">View</a>
+                    <button
+                      onClick={() => handleDeleteLabReport(report.id)}
+                      className="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100 transition-colors ml-2"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Prescription History</h3>
+            {prescriptionHistory.length === 0 ? (
+              <p className="text-gray-600 text-center">No prescription history available.</p>
+            ) : (
+              <div className="space-y-4">
+                {prescriptionHistory.map((pres) => (
+                  <div key={pres.id} className="border border-gray-200 rounded-lg p-3">
+                    <p className="font-semibold text-gray-900">Date: {pres.date}</p>
+                    <p className="text-gray-700">Doctor: {pres.doctor}</p>
+                    <p className="text-gray-700">Medicines: {pres.medicines.join(', ')}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Vaccination Records</h3>
+            {vaccinationRecords.length === 0 ? (
+              <p className="text-gray-600 text-center">No vaccination records available.</p>
+            ) : (
+              <div className="space-y-4">
+                {vaccinationRecords.map((vac, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-3">
+                    <p className="font-semibold text-gray-900">Vaccine: {vac.name}</p>
+                    <p className="text-gray-700">Date: {vac.date}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Secure Sharing</h3>
+            <p className="text-gray-700 mb-6">
+              You can securely share your health records with your healthcare providers or trusted family members.
+            </p>
+            <button
+              onClick={handleShareRecords}
+              className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 transition-colors"
+            >
+              Share Records
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Header Component ---
+// Renders the application header with navigation and cart icon.
+const Header = ({ onBack, isScrolled, currentPage, onNavigate }) => {
+  const { cartItems } = useContext(CartContext); // Access cart items for count display
+  const cartItemCount = cartItems.reduce((total, item) => total + item.quantity, 0); // Calculate total items in cart
+
+  return (
+    <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      isScrolled ? 'bg-white/95 backdrop-blur-md shadow-lg' : 'bg-transparent'
+    }`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <div className="flex items-center">
+            {currentPage !== 'home' && ( // Display back button if not on the home page
+              <button
+                onClick={onBack}
+                className="mr-4 p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                ← {/* Back arrow */}
+              </button>
+            )}
+            <div className="flex items-center space-x-2 cursor-pointer" onClick={() => onNavigate('home')}>
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">M</span>
+              </div>
+              <span className="text-xl font-bold text-gray-900">MediCare Connect</span>
+            </div>
+          </div>
+
+          <nav className="flex items-center space-x-4 md:space-x-8">
+            {/* Navigation links (hidden on small screens) */}
+            <a href="#services" className="hidden md:block text-gray-700 hover:text-blue-600 transition-colors">Services</a>
+            <a href="#about" className="hidden md:block text-gray-700 hover:text-blue-600 transition-colors">About</a>
+            <a href="#contact" className="hidden md:block text-gray-700 hover:text-blue-600 transition-colors">Contact</a>
+
+            {/* Shopping Cart Icon with item count */}
+            <button
+              onClick={() => onNavigate('cart')}
+              className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+            >
+              <span className="text-2xl">🛒</span> {/* Shopping Cart Icon */}
+              {cartItemCount > 0 && ( // Display item count badge if items are in cart
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                  {cartItemCount}
+                </span>
+              )}
+            </button>
+
+            <button className="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition-colors">
+              Emergency
+            </button>
+          </nav>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+// --- Home Page Component ---
+// Displays the main landing page with service options.
+const HomePage = ({ onNavigate, isScrolled }) => {
+  // Defines the available services with their properties
+  const services = [
+    {
+      key: 'medicine',
+      title: 'Find Medicine',
+      description: 'Locate medicines in nearby pharmacies with real-time availability',
+      icon: '💊',
+      gradient: 'from-blue-500 to-cyan-500',
+      stats: '15K+ Medicines'
+    },
+    {
+      key: 'doctor',
+      title: 'Find Doctor',
+      description: 'Connect with qualified specialists and book appointments',
+      icon: '👨‍⚕️',
+      gradient: 'from-green-500 to-emerald-500',
+      stats: '2.5K+ Doctors'
+    },
+    {
+      key: 'ambulance',
+      title: 'Emergency Ambulance',
+      description: 'Book emergency ambulance services with GPS tracking',
+      icon: '🚑',
+      gradient: 'from-red-500 to-pink-500',
+      stats: '<5min Response'
+    },
+    {
+      key: 'telehealth',
+      title: 'Telemedicine',
+      description: 'Virtual consultations with healthcare professionals',
+      icon: '💻',
+      gradient: 'from-purple-500 to-indigo-500',
+      stats: '24/7 Available'
+    },
+    {
+      key: 'government-aid',
+      title: 'Government Schemes',
+      description: 'Find out which healthcare schemes you are eligible for.',
+      icon: '🤝',
+      gradient: 'from-orange-500 to-amber-500',
+      stats: '10+ Schemes'
+    },
+    {
+      key: 'prescription',
+      title: 'Prescription Scan',
+      description: 'Upload your prescription and find available medicines nearby.',
+      icon: '📄',
+      gradient: 'from-teal-500 to-green-500',
+      stats: 'Quick Scan'
+    },
+    {
+      key: 'ngo-charity',
+      title: 'NGOs & Charities',
+      description: 'Find organizations that help fund medical treatments.',
+      icon: '❤️',
+      gradient: 'from-pink-500 to-red-500',
+      stats: 'Support Available'
+    },
+    {
+      key: 'order-tracking',
+      title: 'Order Tracking',
+      description: 'Track your medicine orders and delivery status.',
+      icon: '📦',
+      gradient: 'from-yellow-500 to-orange-500',
+      stats: 'Real-time Updates'
+    },
+    {
+      key: 'symptom-checker',
+      title: 'Symptom Checker',
+      description: 'Get preliminary insights on your symptoms and next steps.',
+      icon: '🤔',
+      gradient: 'from-indigo-500 to-blue-500',
+      stats: 'AI-Powered'
+    },
+    {
+      key: 'health-reminders',
+      title: 'Health Reminders',
+      description: 'Set reminders for medications, appointments, and check-ups.',
+      icon: '⏰',
+      gradient: 'from-green-500 to-lime-500',
+      stats: 'Stay On Track'
+    },
+    {
+      key: 'health-records',
+      title: 'Health Records',
+      description: 'Manage and access your medical history and reports securely.',
+      icon: '🗂️',
+      gradient: 'from-purple-500 to-fuchsia-500',
+      stats: 'Digital & Secure'
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50">
+      {/* Header is rendered by App component */}
+
+      {/* Hero Section */}
+      <section className="pt-20 pb-16 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <div className="max-w-3xl mx-auto">
+            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-6 leading-tight">
+              Healthcare at Your
+              <span className="bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent"> Fingertips</span>
+            </h1>
+            <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+              Connect with medicines, doctors, emergency services, and telemedicine across India.
+              Your comprehensive healthcare companion available 24/7.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-semibold hover:bg-blue-700 transition-all transform hover:scale-105 shadow-lg">
+                Get Started Free
+              </button>
+              <button className="border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-2xl font-semibold hover:border-blue-600 hover:text-blue-600 transition-all">
+                Watch Demo
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Services Grid */}
+      <section id="services" className="py-16 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Our Services</h2>
+            <p className="text-xl text-gray-600">Everything you need for healthcare, in one place</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {services.map((service) => (
+              <div
+                key={service.key}
+                onClick={() => onNavigate(service.key)}
+                className="group relative bg-white rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer transform hover:scale-105"
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${service.gradient} opacity-0 group-hover:opacity-10 rounded-3xl transition-opacity duration-300`} />
+
+                <div className="relative z-10">
+                  <div className="text-4xl mb-4">{service.icon}</div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">{service.title}</h3>
+                  <p className="text-gray-600 mb-4 leading-relaxed">{service.description}</p>
+                  <div className="text-sm font-semibold text-blue-600">{service.stats}</div>
+
+                  <div className="mt-6 flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Click to access</span>
+                    <div className="text-blue-600 group-hover:translate-x-2 transition-transform">
+                      →
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-16 px-4 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">Why Choose MediCare Connect?</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              { icon: '⚡', title: 'Instant Access', desc: 'Get healthcare services within minutes of your request' },
+              { icon: '🔒', title: 'Secure & Private', desc: 'Your health data is protected with bank-level security' },
+              { icon: '📍', title: 'Location Based', desc: 'Find the nearest healthcare services based on your location' }
+            ].map((feature, index) => (
+              <div key={index} className="text-center p-8 bg-white rounded-2xl shadow-lg">
+                <div className="text-5xl mb-4">{feature.icon}</div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
+                <p className="text-gray-600">{feature.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-12 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div>
+              <div className="flex items-center space-x-2 mb-4">
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">M</span>
+                </div>
+                <span className="text-xl font-bold">MediCare Connect</span>
+              </div>
+              <p className="text-gray-400">Your trusted healthcare companion across India.</p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Services</h3>
+              <ul className="space-y-2 text-gray-400">
+                <li>Find Medicines</li>
+                <li>Doctor Consultation</li>
+                <li>Emergency Ambulance</li>
+                <li>Telemedicine</li>
+                <li>Government Schemes</li>
+                <li>Prescription Scan</li>
+                <li>NGOs & Charities</li>
+                <li>Order Tracking</li>
+                <li>Symptom Checker</li>
+                <li>Health Reminders</li>
+                <li>Health Records</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Emergency</h3>
+              <ul className="space-y-2 text-gray-400">
+                <li>🚨 Emergency: 108</li>
+                <li>📞 Helpline: 1800-HEALTH</li>
+                <li>✉️ support@medicare.com</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-4">Connect</h3>
+              <div className="flex space-x-4">
+                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center cursor-pointer">📘</div>
+                <div className="w-10 h-10 bg-blue-400 rounded-lg flex items-center justify-center cursor-pointer">🐦</div>
+                <div className="w-10 h-10 bg-pink-600 rounded-lg flex items-center justify-center cursor-pointer">📷</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-700 mt-8 pt-6 text-center text-gray-400">
+            <p>&copy; 2024 MediCare Connect. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+// --- Medicine Page Component ---
+// Displays a list of medicines and allows adding them to cart.
+const MedicinePage = ({ onBack }) => {
+  const { addToCart } = useContext(CartContext); // Access addToCart function from context
+  const [searchQuery, setSearchQuery] = useState(''); // State for medicine search query
+  const [selectedCategory, setSelectedCategory] = useState(''); // State for selected medicine category
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Mock data for available medicines
+  const medicines = [
+    { name: 'Paracetamol 500mg', price: 25, pharmacy: 'Apollo Pharmacy', distance: '0.5 km', availability: 'In Stock' },
+    { name: 'Amoxicillin 250mg', price: 85, pharmacy: 'MedPlus', distance: '1.2 km', availability: 'In Stock' },
+    { name: 'Ibuprofen 400mg', price: 45, pharmacy: 'Cipla Health', distance: '0.8 km', availability: 'Limited Stock' },
+    { name: 'Cetirizine 10mg', price: 30, pharmacy: 'Apollo Pharmacy', distance: '0.5 km', availability: 'In Stock' },
+    { name: 'Aspirin 100mg', price: 15, pharmacy: 'Local Chemist', distance: '0.3 km', availability: 'In Stock' },
+    { name: 'Omeprazole 20mg', price: 60, pharmacy: 'Apollo Pharmacy', distance: '0.5 km', availability: 'In Stock' },
+    { name: 'Vitamin D3 60K IU', price: 120, pharmacy: 'Wellness Pharmacy', distance: '2.0 km', availability: 'In Stock' }
+  ];
+
+  // Handles adding a medicine to the cart and displays a confirmation message.
+  const handleAddToCartClick = (med) => {
+    addToCart(med); // Add item to cart via context
+    setConfirmationMessage({ type: 'success', text: `${med.name} added to cart!` }); // Set confirmation message
+    setTimeout(() => setConfirmationMessage(null), 2000); // Clear message after 2 seconds
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Find Medicines</h1>
+            <p className="text-gray-600">Locate medicines in nearby pharmacies with real-time availability</p>
+          </div>
+
+          {/* Search and filter section */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <input
+                type="text"
+                placeholder="Search for medicine..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Categories</option>
+                <option value="tablet">Tablets</option>
+                <option value="syrup">Syrups</option>
+                <option value="injection">Injections</option>
+              </select>
+              <button className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors">
+                Search
+              </button>
+            </div>
+          </div>
+
+          {/* Display of medicine results */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {medicines.map((med, index) => (
+              <div key={index} className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-bold text-gray-900">{med.name}</h3>
+                  <div className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    med.availability === 'In Stock' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {med.availability}
+                  </div>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <p className="text-2xl font-bold text-blue-600">₹{med.price}</p>
+                  <p className="text-gray-600">{med.pharmacy}</p>
+                  <p className="text-sm text-gray-500">📍 {med.distance} away</p>
+                </div>
+
+                <button
+                  onClick={() => handleAddToCartClick(med)}
+                  className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition-colors"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* PaymentModal is now handled by CheckoutPage */}
+    </div>
+  );
+};
+
+// --- Cart Page Component ---
+// Displays items added to the cart and allows quantity adjustments or proceeding to checkout.
+const CartPage = ({ onBack, onProceedToCheckout }) => {
+  const { cartItems, updateQuantity, removeFromCart } = useContext(CartContext); // Access cart state functions
+
+  // Calculate the subtotal of all items in the cart
+  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Your Cart</h1>
+            <p className="text-gray-600">Review your selected medicines</p>
+          </div>
+
+          {cartItems.length === 0 ? ( // Display message if cart is empty
+            <div className="bg-white rounded-2xl p-8 shadow-lg text-center text-gray-600">
+              <p className="text-lg">Your cart is empty. Start adding medicines!</p>
+              <button
+                onClick={onBack}
+                className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors font-semibold"
+              >
+                Go Back to Medicines
+              </button>
+            </div>
+          ) : ( // Display cart items if not empty
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <div className="space-y-6 mb-8">
+                {cartItems.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900">{item.name}</h3>
+                      <p className="text-gray-600 text-sm">₹{item.price} per unit</p>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => updateQuantity(item.name, item.quantity - 1)}
+                        className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                      >
+                        -
+                      </button>
+                      <span className="font-semibold text-lg">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.name, item.quantity + 1)}
+                        className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.name)}
+                        className="p-2 text-red-600 hover:text-red-800 transition-colors"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                    <div className="ml-4 text-xl font-bold text-blue-600">
+                      ₹{item.price * item.quantity}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center border-t border-gray-300 pt-6 mt-6">
+                <span className="text-2xl font-bold text-gray-900">Subtotal:</span>
+                <span className="text-3xl font-bold text-blue-600">₹{subtotal}</span>
+              </div>
+
+              <button
+                onClick={onProceedToCheckout}
+                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors mt-8"
+              >
+                Proceed to Checkout
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Checkout Page Component ---
+// Handles delivery information input and initiates the payment process for cart items.
+const CheckoutPage = ({ onBack, onOrderPlaced }) => {
+  const { cartItems, placeOrder } = useContext(CartContext); // Access cart items and placeOrder function
+  const [deliveryDetails, setDeliveryDetails] = useState({ // State for delivery address details
+    name: '',
+    addressLine1: '',
+    city: '',
+    state: '',
+    pincode: '',
+  });
+  const [showPaymentModal, setShowPaymentModal] = useState(false); // Controls visibility of payment modal
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Calculate total amount from cart items
+  const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  // Updates delivery details state on input change
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setDeliveryDetails((prevDetails) => ({ ...prevDetails, [name]: value }));
+  };
+
+  // Handles click on "Place Order & Pay" button, validates details, then shows payment modal.
+  const handlePlaceOrderClick = () => {
+    // Basic validation for delivery details
+    if (!deliveryDetails.name || !deliveryDetails.addressLine1 || !deliveryDetails.city || !deliveryDetails.state || !deliveryDetails.pincode) {
+      setConfirmationMessage({ type: 'error', text: 'Please fill in all delivery details.' });
+      setTimeout(() => setConfirmationMessage(null), 3000);
+      return;
+    }
+    setShowPaymentModal(true); // Show the payment modal
+  };
+
+  // Callback function for successful payment from PaymentModal.
+  const handlePaymentSuccess = () => {
+    setShowPaymentModal(false); // Hide payment modal
+    const newOrder = placeOrder(cartItems, deliveryDetails); // Place the order via context
+    setConfirmationMessage({ type: 'success', text: `Order ${newOrder.id} placed successfully!` }); // Confirmation message
+    setTimeout(() => {
+      setConfirmationMessage(null);
+      onOrderPlaced(newOrder.id); // Navigate to order tracking page with new order ID
+    }, 2000);
+  };
+
+  // If cart is empty, redirect user back or show a message
+  if (cartItems.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-20 px-4">
+        <div className="bg-white rounded-2xl p-8 shadow-lg text-center text-gray-600 max-w-md w-full">
+          <p className="text-lg">Your cart is empty. Please add items to proceed to checkout.</p>
+          <button
+            onClick={onBack}
+            className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors font-semibold"
+          >
+            Go Back to Cart
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-4xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Checkout</h1>
+            <p className="text-gray-600">Confirm your order and delivery details</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Delivery Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name</label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={deliveryDetails.name}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="John Doe"
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor="addressLine1" className="block text-sm font-medium text-gray-700">Address Line 1</label>
+                <input
+                  type="text"
+                  id="addressLine1"
+                  name="addressLine1"
+                  value={deliveryDetails.addressLine1}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="123, Main Street"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="city" className="block text-sm font-medium text-gray-700">City</label>
+                <input
+                  type="text"
+                  id="city"
+                  name="city"
+                  value={deliveryDetails.city}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="Mumbai"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="state" className="block text-sm font-medium text-gray-700">State</label>
+                <input
+                  type="text"
+                  id="state"
+                  name="state"
+                  value={deliveryDetails.state}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="Maharashtra"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="pincode" className="block text-sm font-medium text-gray-700">Pincode</label>
+                <input
+                  type="text"
+                  id="pincode"
+                  name="pincode"
+                  value={deliveryDetails.pincode}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  placeholder="400001"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Order Summary</h3>
+            <div className="space-y-4 mb-6">
+              {cartItems.map((item) => (
+                <div key={item.name} className="flex justify-between items-center">
+                  <span className="text-gray-700">{item.name} (x{item.quantity})</span>
+                  <span className="font-semibold">₹{item.price * item.quantity}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center border-t border-gray-300 pt-4">
+              <span className="text-xl font-bold text-gray-900">Total:</span>
+              <span className="text-2xl font-bold text-blue-600">₹{totalAmount}</span>
+            </div>
+
+            <button
+              onClick={handlePlaceOrderClick}
+              className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition-colors mt-8"
+            >
+              Place Order & Pay
+            </button>
+          </div>
+        </div>
+      </div>
+      <PaymentModal
+        show={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        amount={totalAmount}
+        item="Your Medicine Order"
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+    </div>
+  );
+};
+
+// --- Order Tracking Page Component ---
+// Displays a list of past orders and simulates their status updates.
+const OrderTrackingPage = ({ onBack }) => {
+  const { orders, setOrders } = useContext(CartContext); // Access orders state and its setter from context
+
+  // Effect to simulate status updates for orders over time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setOrders(prevOrders => prevOrders.map(order => {
+        if (order.status === 'Processing') {
+          // Simulate transition to 'Shipped' after 5 seconds
+          if (Date.now() - new Date(order.orderDate).getTime() > 5000) {
+            return { ...order, status: 'Shipped' };
+          }
+        } else if (order.status === 'Shipped') {
+          // Simulate transition to 'Delivered' after 10 seconds total from order date
+          if (Date.now() - new Date(order.orderDate).getTime() > 10000) {
+            return { ...order, status: 'Delivered' };
+          }
+        }
+        return order; // Return order unchanged if no status update
+      }));
+    }, 2000); // Check and update every 2 seconds
+
+    return () => clearInterval(interval); // Cleanup interval on component unmount
+  }, [orders, setOrders]); // Re-run effect if orders or setOrders changes
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Order Tracking</h1>
+            <p className="text-gray-600">View the status of your recent medicine orders</p>
+          </div>
+
+          {orders.length === 0 ? ( // Display message if no orders have been placed
+            <div className="bg-white rounded-2xl p-8 shadow-lg text-center text-gray-600">
+              <p className="text-lg">You haven't placed any orders yet.</p>
+              <button
+                onClick={onBack}
+                className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors font-semibold"
+              >
+                Go to Home
+              </button>
+            </div>
+          ) : ( // Display list of orders
+            <div className="space-y-6">
+              {orders.map((order) => (
+                <div key={order.id} className="bg-white rounded-2xl p-6 shadow-lg">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-900">Order ID: {order.id}</h3>
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      order.status === 'Delivered' ? 'bg-green-100 text-green-800' :
+                      order.status === 'Shipped' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {order.status}
+                    </span>
+                  </div>
+                  <p className="text-gray-600 mb-2">Order Date: {order.orderDate}</p>
+                  <p className="text-gray-600 mb-4">Total Amount: ₹{order.totalAmount}</p>
+
+                  <div className="mb-4">
+                    <h4 className="font-semibold text-gray-800 mb-2">Items:</h4>
+                    <ul className="list-disc list-inside text-gray-700">
+                      {order.items.map((item, idx) => (
+                        <li key={idx}>{item.name} (x{item.quantity}) - ₹{item.price * item.quantity}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mb-4">
+                    <h4 className="font-semibold text-gray-800 mb-2">Delivery To:</h4>
+                    <p className="text-gray-700">
+                      {order.deliveryDetails.name}<br/>
+                      {order.deliveryDetails.addressLine1}<br/>
+                      {order.deliveryDetails.city}, {order.deliveryDetails.state} - {order.deliveryDetails.pincode}
+                    </p>
+                  </div>
+
+                  <button className="w-full bg-blue-500 text-white py-2 rounded-xl hover:bg-blue-600 transition-colors">
+                    View Order Details
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Doctor Page Component ---
+// Allows users to find doctors based on various criteria.
+const DoctorPage = ({ onBack }) => {
+  const [searchQuery, setSearchQuery] = useState(''); // State for doctor name search
+  const [selectedSpecialty, setSelectedSpecialty] = useState(''); // State for selected specialty
+  const [selectedLocation, setSelectedLocation] = useState(''); // State for selected location
+  const [selectedSymptoms, setSelectedSymptoms] = useState(''); // State for selected symptoms
+  const [showPaymentModal, setShowPaymentModal] = useState(false); // Controls payment modal visibility
+  const [currentItem, setCurrentItem] = useState({ name: '', price: 0 }); // Item for payment modal
+
+  // Mock data for doctors
+  const doctors = [
+    { name: 'Dr. Priya Sharma', specialty: 'Cardiologist', experience: '15 years', rating: 4.8, fee: 800, hospital: 'Max Hospital', location: 'Delhi', symptoms: ['chest pain', 'heart palpitations'] },
+    { name: 'Dr. Rajesh Kumar', specialty: 'Pediatrician', experience: '12 years', rating: 4.9, fee: 600, hospital: 'Apollo Hospital', location: 'Mumbai', symptoms: ['fever', 'cough', 'cold'] },
+    { name: 'Dr. Anita Singh', specialty: 'Dermatologist', experience: '10 years', rating: 4.7, fee: 700, hospital: 'Fortis Hospital', location: 'Delhi', symptoms: ['skin rash', 'acne', 'hair loss'] },
+    { name: 'Dr. Vikram Mehta', specialty: 'Orthopedic', experience: '18 years', rating: 4.8, fee: 900, hospital: 'AIIMS', location: 'Delhi', symptoms: ['joint pain', 'back pain', 'fracture'] },
+    { name: 'Dr. Meera Patel', specialty: 'General Physician', experience: '8 years', rating: 4.6, fee: 500, hospital: 'Manipal Hospital', location: 'Bangalore', symptoms: ['fever', 'headache', 'body ache'] },
+    { name: 'Dr. Arjun Reddy', specialty: 'Neurologist', experience: '14 years', rating: 4.9, fee: 1200, hospital: 'Apollo Hospital', location: 'Hyderabad', symptoms: ['headache', 'dizziness', 'memory loss'] }
+  ];
+
+  // Mock data for locations and symptoms for dropdowns
+  const locations = ['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad'];
+  const symptoms = ['fever', 'headache', 'chest pain', 'cough', 'joint pain', 'skin rash', 'back pain', 'dizziness'];
+
+  // Filters doctors based on selected criteria
+  const filteredDoctors = doctors.filter(doctor => {
+    const matchesLocation = !selectedLocation || doctor.location === selectedLocation;
+    const matchesSymptoms = !selectedSymptoms || doctor.symptoms.some(symptom =>
+      symptom.toLowerCase().includes(selectedSymptoms.toLowerCase())
+    );
+    const matchesSpecialty = !selectedSpecialty || doctor.specialty.toLowerCase().includes(selectedSpecialty.toLowerCase());
+    const matchesSearch = !searchQuery || doctor.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+    return matchesLocation && matchesSymptoms && matchesSpecialty && matchesSearch;
+  });
+
+  // Handles booking an appointment, setting current item for payment modal.
+  const handleBookAppointment = (doctor) => {
+    setCurrentItem({ name: `Appointment with ${doctor.name}`, price: doctor.fee });
+    setShowPaymentModal(true);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Find Doctor</h1>
+            <p className="text-gray-600">Find doctors based on your location and symptoms</p>
+          </div>
+
+          {/* Search and filter section */}
+          <div className="bg-white rounded-2xl p-6 shadow-lg mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <select
+                value={selectedLocation}
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Location</option>
+                {locations.map(location => (
+                  <option key={location} value={location}>{location}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedSymptoms}
+                onChange={(e) => setSelectedSymptoms(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select Symptoms</option>
+                {symptoms.map(symptom => (
+                  <option key={symptom} value={symptom}>{symptom}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedSpecialty}
+                onChange={(e) => setSelectedSpecialty(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Specialties</option>
+                <option value="cardiology">Cardiology</option>
+                <option value="pediatrics">Pediatrics</option>
+                <option value="dermatology">Dermatology</option>
+                <option value="orthopedic">Orthopedic</option>
+                <option value="general">General Physician</option>
+                <option value="neurology">Neurology</option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Search doctor name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+              />
+
+              <button className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors">
+                Search
+              </button>
+            </div>
+          </div>
+
+          {/* Display of filtered doctors */}
+          <div className="mb-4 text-gray-600">
+            Found {filteredDoctors.length} doctors
+            {selectedLocation && ` in ${selectedLocation}`}
+            {selectedSymptoms && ` for ${selectedSymptoms}`}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {filteredDoctors.map((doctor, index) => (
+              <div key={index} className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                <div className="flex items-start space-x-4">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-xl">
+                    {doctor.name.split(' ').map(n => n[0]).join('')}
+                  </div>
+
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900 mb-1">{doctor.name}</h3>
+                    <p className="text-blue-600 font-semibold mb-1">{doctor.specialty}</p>
+                    <p className="text-gray-600 text-sm mb-1">{doctor.experience} experience</p>
+                    <p className="text-gray-600 text-sm mb-1">📍 {doctor.location}</p>
+                    <p className="text-gray-600 text-sm">{doctor.hospital}</p>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="flex items-center mb-2">
+                      <span className="text-yellow-500">★</span>
+                      <span className="text-sm font-semibold ml-1">{doctor.rating}</span>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600">₹{doctor.fee}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => handleBookAppointment(doctor)}
+                      className="flex-1 bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition-colors"
+                    >
+                      Book Appointment
+                    </button>
+                    <button className="px-4 py-3 border border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors">
+                      Chat
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <PaymentModal
+        show={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        amount={currentItem.price}
+        item={currentItem.name}
+      />
+    </div>
+  );
+};
+
+// --- Ambulance Page Component ---
+// Provides options for emergency and planned ambulance services.
+const AmbulancePage = ({ onBack }) => {
+  const [selectedCity, setSelectedCity] = useState(''); // Selected city for planned transport
+  const [selectedHospital, setSelectedHospital] = useState(''); // Selected hospital for planned transport
+  const [bookingType, setBookingType] = useState('emergency'); // 'emergency' or 'planned'
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Mock data for cities and ambulance services
+  const cities = ['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad'];
+
+  const ambulanceServices = {
+    'Delhi': [
+      { name: 'Delhi Emergency Services', address: 'AIIMS, New Delhi', phone: '+91-11-2659-3333', time: '3 min', driver: 'Rajesh Kumar', rating: 4.8 },
+      { name: 'Max Hospital Ambulance', address: 'Max Hospital, Saket', phone: '+91-11-2651-5050', time: '5 min', driver: 'Amit Singh', rating: 4.9 },
+      { name: 'Apollo Emergency', address: 'Apollo Hospital, Mathura Road', phone: '+91-11-2692-5858', time: '7 min', driver: 'Suresh Gupta', rating: 4.7 }
+    ],
+    'Mumbai': [
+      { name: 'Mumbai Emergency Care', address: 'KEM Hospital, Parel', phone: '+91-22-2413-6051', time: '4 min', driver: 'Prakash Patil', rating: 4.8 },
+      { name: 'Hinduja Hospital Ambulance', address: 'Hinduja Hospital, Mahim', phone: '+91-22-2445-2222', time: '6 min', driver: 'Ravi Sharma', rating: 4.6 },
+      { name: 'Lilavati Ambulance', address: 'Lilavati Hospital, Bandra', phone: '+91-22-2675-1000', time: '8 min', driver: 'Santosh More', rating: 4.9 }
+    ],
+    'Bangalore': [
+      { name: 'Bangalore Medical Services', address: 'Manipal Hospital, HAL', phone: '+91-80-2502-4444', time: '5 min', driver: 'Krishnamurthy', rating: 4.7 },
+      { name: 'Apollo Emergency BLR', address: 'Apollo Hospital, Bannerghatta', phone: '+91-80-2630-0300', time: '7 min', driver: 'Venkatesh', rating: 4.8 },
+      { name: 'Fortis Ambulance', address: 'Fortis Hospital, Cunningham Road', phone: '+91-80-6621-4444', time: '9 min', driver: 'Rajesh Gowda', rating: 4.6 }
+    ]
+  };
+
+  // Filters ambulance services based on selected city
+  const currentServices = selectedCity ? ambulanceServices[selectedCity] || [] : [];
+
+  // Handles emergency call action
+  const handleEmergencyCall = () => {
+    setConfirmationMessage({ type: 'success', text: '🚨 Emergency call placed! Ambulance dispatched.' });
+    setTimeout(() => setConfirmationMessage(null), 3000); // Clear message after 3 seconds
+  };
+
+  // Handles booking a planned ambulance service
+  const handleBookAmbulance = (service) => {
+    setConfirmationMessage({ type: 'success', text: `🚑 Ambulance booked! ETA: ${service.time}.` });
+    setTimeout(() => setConfirmationMessage(null), 3000); // Clear message after 3 seconds
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="mb-8 text-center">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Emergency Ambulance</h1>
+            <p className="text-xl text-gray-600">Quick response ambulance services with GPS tracking</p>
+          </div>
+
+          {/* Emergency vs Non-Emergency selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div
+              className={`p-6 rounded-2xl cursor-pointer transition-all ${
+                bookingType === 'emergency' ? 'bg-red-100 border-2 border-red-500' : 'bg-red-50 border-2 border-transparent'
+              }`}
+              onClick={() => setBookingType('emergency')}
+            >
+              <div className="text-4xl mb-4">🚨</div>
+              <h3 className="text-xl font-bold text-red-600 mb-2">Emergency Booking</h3>
+              <p className="text-gray-600 mb-4">Life-threatening situations - Immediate dispatch</p>
+              <button
+                onClick={handleEmergencyCall}
+                className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition-colors"
+              >
+                Call Emergency - 108
+              </button>
+            </div>
+
+            <div
+              className={`p-6 rounded-2xl cursor-pointer transition-all ${
+                bookingType === 'planned' ? 'bg-blue-100 border-2 border-blue-500' : 'bg-blue-50 border-2 border-transparent'
+              }`}
+              onClick={() => setBookingType('planned')}
+            >
+              <div className="text-4xl mb-4">🏥</div>
+              <h3 className="text-xl font-bold text-blue-600 mb-2">Planned Transport</h3>
+              <p className="text-gray-600 mb-4">Non-emergency medical transport</p>
+              <button className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors">
+                Search by Location
+              </button>
+            </div>
+          </div>
+
+          {bookingType === 'planned' && ( // Display planned transport options if selected
+            <>
+              {/* City and Hospital search for planned transport */}
+              <div className="bg-white rounded-2xl p-6 shadow-lg mb-8">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Search Ambulance by Location</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <select
+                    value={selectedCity}
+                    onChange={(e) => {
+                      setSelectedCity(e.target.value);
+                      setConfirmationMessage(null); // Clear message on new selection
+                    }}
+                    className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select City</option>
+                    {cities.map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="text"
+                    placeholder="Search hospital..."
+                    value={selectedHospital}
+                    onChange={(e) => {
+                      setSelectedHospital(e.target.value);
+                      setConfirmationMessage(null); // Clear message on new selection
+                    }}
+                    className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  <button className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors">
+                    Search Ambulances
+                  </button>
+                </div>
+              </div>
+
+              {/* Display of available ambulances */}
+              {selectedCity && currentServices.length > 0 && (
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-6">
+                    Available Ambulances in {selectedCity} ({currentServices.length})
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {currentServices.map((service, index) => (
+                      <div key={index} className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center space-x-2">
+                            <div className="text-2xl">🚑</div>
+                            <div>
+                              <h4 className="font-bold text-gray-900">{service.name}</h4>
+                              <div className="flex items-center">
+                                <span className="text-yellow-500">★</span>
+                                <span className="text-sm ml-1">{service.rating}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-green-600">{service.time}</div>
+                            <div className="text-xs text-gray-500">ETA</div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 mb-4">
+                          <p className="text-sm text-gray-600">📍 {service.address}</p>
+                          <p className="text-sm text-gray-600">📞 {service.phone}</p>
+                          <p className="text-sm text-gray-600">👨‍⚕️ Driver: {service.driver}</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => handleBookAmbulance(service)}
+                            className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition-colors font-semibold"
+                          >
+                            Book Now
+                          </button>
+                          <button className="w-full border border-blue-600 text-blue-600 py-2 rounded-xl hover:bg-blue-50 transition-colors">
+                            Call Direct
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Emergency Information section */}
+          <div className="mt-12 bg-gradient-to-r from-red-500 to-pink-500 rounded-2xl p-8 text-white text-center">
+            <h3 className="text-2xl font-bold mb-4">Emergency Services Available 24/7</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">&lt;5min</div>
+                <div className="text-sm">Response Time</div>
+              </div>
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">GPS</div>
+                <div className="text-sm">Live Tracking</div>
+              </div>
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">Trained</div>
+                <div className="text-sm">Paramedics</div>
+              </div>
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">24/7</div>
+                <div className="text-sm">Available</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Telehealth Page Component ---
+// Provides options for virtual consultations.
+const TelehealthPage = ({ onBack }) => {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Telemedicine</h1>
+            <p className="text-xl text-gray-600">Virtual consultations from the comfort of your home</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <div className="text-4xl mb-4">💻</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Video Consultation</h3>
+              <p className="text-gray-600 mb-6">Face-to-face consultation with doctors via video call</p>
+              <ul className="space-y-2 text-sm text-gray-600 mb-6">
+                <li>• HD video quality</li>
+                <li>• Secure & private</li>
+                <li>• Prescription delivery</li>
+                <li>• Follow-up reminders</li>
+              </ul>
+              <button className="w-full bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 transition-colors">
+                Start Video Call
+              </button>
+            </div>
+
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <div className="text-4xl mb-4">💬</div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">Chat Consultation</h3>
+              <p className="text-gray-600 mb-6">Text-based consultation for non-urgent queries</p>
+              <ul className="space-y-2 text-sm text-gray-600 mb-6">
+                <li>• Instant responses</li>
+                <li>• Document sharing</li>
+                <li>• Chat history</li>
+                <li>• 24/7 availability</li>
+              </ul>
+              <button className="w-full bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 transition-colors">
+                Start Chat
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl p-8 text-white text-center">
+            <h3 className="text-2xl font-bold mb-4">Available 24/7</h3>
+            <p className="text-lg mb-6">Our healthcare professionals are ready to help you anytime, anywhere</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">500+</div>
+                <div className="text-sm">Doctors Online</div>
+              </div>
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">24/7</div>
+                <div className="text-sm">Support</div>
+              </div>
+              <div className="bg-white/20 rounded-xl p-4">
+                <div className="text-2xl font-bold">₹299</div>
+                <div className="text-sm">Starting Price</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Government Aid Scheme Page Component ---
+// Helps users find eligible government healthcare schemes based on their details.
+const GovernmentAidPage = ({ onBack }) => {
+  const [age, setAge] = useState('');
+  const [income, setIncome] = useState('');
+  const [hasBPL, setHasBPL] = useState('');
+  const [medicalCondition, setMedicalCondition] = useState('');
+  const [eligibleSchemes, setEligibleSchemes] = useState([]);
+  const [loadingEligibility, setLoadingEligibility] = useState(false); // Loading state for eligibility check
+
+  // Mock data for government schemes and their eligibility criteria
+  const schemesData = [
+    {
+      name: 'Ayushman Bharat Pradhan Mantri Jan Arogya Yojana (AB PM-JAY)',
+      description: 'Provides health insurance coverage of ₹5 Lakh per family per year for secondary and tertiary care hospitalization.',
+      criteria: {
+        incomeLimit: 120000, // Annual income less than this (example: ₹1.2 Lakh)
+        hasBPLCard: true,
+        ageMin: 0,
+        ageMax: 999
+      },
+      link: 'https://pmjay.gov.in/'
+    },
+    {
+      name: 'Pradhan Mantri Jan Aushadhi Yojana (PMJAY)',
+      description: 'Aims to provide quality generic medicines at affordable prices for all, especially the poor and disadvantaged.',
+      criteria: {
+        incomeLimit: 999999999, // Essentially no income limit, widely accessible
+        hasBPLCard: false, // Not a strict BPL requirement, but helps accessibility
+        ageMin: 0,
+        ageMax: 999
+      },
+      link: 'https://janaushadhi.gov.in/'
+    },
+    {
+      name: 'Rashtriya Swasthya Bima Yojana (RSBY)',
+      description: 'Provides health insurance coverage for BPL families.',
+      criteria: {
+        incomeLimit: 100000, // Example income limit
+        hasBPLCard: true,
+        ageMin: 0,
+        ageMax: 999
+      },
+      link: 'https://www.india.gov.in/spotlight/rashtriya-swasthya-bima-yojana-rsby' // Placeholder link
+    },
+    {
+      name: 'National Health Mission (NHM)',
+      description: 'Strengthens rural and urban health infrastructure and promotes health services.',
+      criteria: {
+        incomeLimit: 999999999, // Broad program, no strict income limit
+        hasBPLCard: false,
+        ageMin: 0,
+        ageMax: 999
+      },
+      link: 'https://nhm.gov.in/'
+    },
+    {
+      name: 'Senior Citizen Health Insurance Scheme',
+      description: 'Health insurance specifically for senior citizens (above 60 years).',
+      criteria: {
+        incomeLimit: 999999999,
+        hasBPLCard: false,
+        ageMin: 60,
+        ageMax: 999
+      },
+      link: '#' // Placeholder link
+    },
+  ];
+
+  // Checks user eligibility against defined schemes.
+  const checkEligibility = () => {
+    setLoadingEligibility(true); // Start loading
+    setEligibleSchemes([]); // Clear previous results
+
+    const userIncome = parseFloat(income);
+    const userAge = parseInt(age);
+    const userHasBPL = hasBPL === 'yes';
+
+    setTimeout(() => { // Simulate API call delay
+      const eligible = schemesData.filter(scheme => {
+        const criteria = scheme.criteria;
+
+        // Check against each criterion. A scheme is eligible only if ALL criteria match.
+        if (userIncome > criteria.incomeLimit) {
+          return false;
+        }
+        if (criteria.hasBPLCard && !userHasBPL) {
+          return false;
+        }
+        if (userAge < criteria.ageMin || userAge > criteria.ageMax) {
+          return false;
+        }
+        // More complex conditions (e.g., specific medical conditions) would be added here.
+        return true;
+      });
+      setEligibleSchemes(eligible); // Set the filtered eligible schemes
+      setLoadingEligibility(false); // End loading
+    }, 1500); // Simulate network delay
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Government Aid Schemes</h1>
+            <p className="text-xl text-gray-600">Answer a few questions to find out which schemes you might be eligible for.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Your Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <label htmlFor="age" className="block text-gray-700 font-semibold mb-2">Your Age</label>
+                <input
+                  type="number"
+                  id="age"
+                  value={age}
+                  onChange={(e) => { setAge(e.target.value); setEligibleSchemes([]); }} // Clear results on input change
+                  placeholder="e.g., 30"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="income" className="block text-gray-700 font-semibold mb-2">Annual Household Income (₹)</label>
+                <input
+                  type="number"
+                  id="income"
+                  value={income}
+                  onChange={(e) => { setIncome(e.target.value); setEligibleSchemes([]); }} // Clear results on input change
+                  placeholder="e.g., 150000"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="bpl" className="block text-gray-700 font-semibold mb-2">Do you have a BPL (Below Poverty Line) Card?</label>
+                <select
+                  id="bpl"
+                  value={hasBPL}
+                  onChange={(e) => { setHasBPL(e.target.value); setEligibleSchemes([]); }} // Clear results on input change
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select an option</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="condition" className="block text-gray-700 font-semibold mb-2">Any Major Medical Condition? (e.g., Diabetes, Heart Disease)</label>
+                <input
+                  type="text"
+                  id="condition"
+                  value={medicalCondition}
+                  onChange={(e) => { setMedicalCondition(e.target.value); setEligibleSchemes([]); }} // Clear results on input change
+                  placeholder="e.g., Diabetes"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <button
+              onClick={checkEligibility}
+              disabled={loadingEligibility}
+              className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                loadingEligibility ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {loadingEligibility ? 'Checking Eligibility...' : 'Check Eligibility'}
+            </button>
+          </div>
+
+          {eligibleSchemes.length > 0 && ( // Display eligible schemes if found
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">Eligible Schemes</h3>
+              <div className="space-y-6">
+                {eligibleSchemes.map((scheme, index) => (
+                  <div key={index} className="border-b border-gray-200 pb-6 last:border-b-0">
+                    <h4 className="text-xl font-bold text-blue-600 mb-2">{scheme.name}</h4>
+                    <p className="text-gray-700 mb-3">{scheme.description}</p>
+                    <a
+                      href={scheme.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-blue-500 hover:text-blue-700 font-semibold"
+                    >
+                      Learn More <span className="ml-1">→</span>
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {eligibleSchemes.length === 0 && !loadingEligibility && age && income && hasBPL && ( // Message if no schemes found
+            <div className="bg-white rounded-2xl p-8 shadow-lg text-center text-gray-600">
+              <p className="text-lg">No schemes found matching your criteria. Please adjust your inputs or contact a local government aid office for more information.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Prescription Page Component ---
+// Allows users to upload a prescription image and find pharmacies for the medicines.
+const PrescriptionPage = ({ onBack }) => {
+  const [prescriptionImage, setPrescriptionImage] = useState(null); // Stores the uploaded image data URL
+  const [extractedMedicinesInput, setExtractedMedicinesInput] = useState(''); // Simulated OCR output
+  const [foundPharmacies, setFoundPharmacies] = useState([]); // List of pharmacies found
+  const [showMedicineInput, setShowMedicineInput] = useState(false); // Controls visibility of manual medicine input
+  const [loadingPharmacies, setLoadingPharmacies] = useState(false); // Loading state for pharmacy search
+  const [confirmationMessage, setConfirmationMessage] = useState(null); // Feedback message to user
+
+  // Mock data for pharmacies and their medicine stock
+  const allPharmaciesData = [
+    { name: 'Apollo Pharmacy', distance: '0.5 km', medicines: ['Paracetamol 500mg', 'Cetirizine 10mg', 'Omeprazole 20mg'], location: 'Mumbai' },
+    { name: 'MedPlus', distance: '1.2 km', medicines: ['Amoxicillin 250mg', 'Ibuprofen 400mg', 'Paracetamol 500mg'], location: 'Delhi' },
+    { name: 'Cipla Health Store', distance: '0.8 km', medicines: ['Ibuprofen 400mg', 'Aspirin 100mg'], location: 'Bangalore' },
+    { name: 'Wellness Pharmacy', distance: '2.0 km', medicines: ['Vitamin D3 60K IU', 'Paracetamol 500mg'], location: 'Hyderabad' },
+    { name: 'Local Chemist', distance: '0.3 km', medicines: ['Aspirin 100mg', 'Cetirizine 10mg'], location: 'Mumbai' }
+  ];
+
+  // Handles the file input change for prescription image upload.
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPrescriptionImage(reader.result); // Set image preview
+        setShowMedicineInput(true); // Show manual input section
+        setExtractedMedicinesInput(''); // Clear previous medicine input
+        setFoundPharmacies([]); // Clear previous search results
+        setConfirmationMessage(null); // Clear any old messages
+      };
+      reader.readAsDataURL(file); // Read file as data URL for display
+    } else {
+      // Reset states if no file is selected
+      setPrescriptionImage(null);
+      setShowMedicineInput(false);
+      setExtractedMedicinesInput('');
+      setFoundPharmacies([]);
+      setConfirmationMessage(null);
+    }
+  };
+
+  // Simulates finding pharmacies based on extracted (or manually entered) medicines.
+  const findPharmacies = () => {
+    setLoadingPharmacies(true); // Start loading
+    setFoundPharmacies([]); // Clear previous results
+    setConfirmationMessage({ type: 'info', text: 'Finding Pharmacies...' }); // Show loading message
+
+    // Process entered medicine names
+    const prescribedMeds = extractedMedicinesInput
+      .split(',')
+      .map(med => med.trim())
+      .filter(med => med.length > 0)
+      .map(med => med.toLowerCase());
+
+    if (prescribedMeds.length === 0) {
+      setLoadingPharmacies(false);
+      setConfirmationMessage({ type: 'error', text: 'Please enter at least one medicine name.' });
+      setTimeout(() => setConfirmationMessage(null), 3000);
+      return;
+    }
+
+    // Simulate searching through pharmacies with a delay
+    setTimeout(() => {
+      const matchingPharmacies = allPharmaciesData.filter(pharmacy => {
+        // Check if any of the prescribed medicines are available in this pharmacy
+        return prescribedMeds.some(prescribedMed =>
+          pharmacy.medicines.some(availableMed =>
+            availableMed.toLowerCase().includes(prescribedMed)
+          )
+        );
+      });
+      setFoundPharmacies(matchingPharmacies); // Set found pharmacies
+      setLoadingPharmacies(false); // End loading
+      // Set appropriate confirmation message based on results
+      if (matchingPharmacies.length > 0) {
+        setConfirmationMessage({ type: 'success', text: 'Pharmacies found with your medicines!' });
+      } else {
+        setConfirmationMessage({ type: 'info', text: 'No pharmacies found with the specified medicines.' });
+      }
+      setTimeout(() => setConfirmationMessage(null), 3000); // Clear message
+    }, 1500); // Simulate network delay
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-4xl mx-auto">
+          {confirmationMessage && ( // Displays confirmation/error/info messages
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' :
+              confirmationMessage.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Prescription Scan & Find</h1>
+            <p className="text-xl text-gray-600">Upload your prescription and find nearby pharmacies with the medicines you need.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Upload Prescription Image</h3>
+            <div className="mb-6 border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
+              <label htmlFor="prescription-upload" className="cursor-pointer text-blue-600 hover:text-blue-800 font-semibold">
+                Click to upload image
+              </label>
+              <input
+                type="file"
+                id="prescription-upload"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              {prescriptionImage && ( // Display uploaded image preview
+                <div className="mt-4">
+                  <p className="text-sm text-gray-500 mb-2">Uploaded Image:</p>
+                  <img src={prescriptionImage} alt="Prescription" className="max-w-full h-auto rounded-lg shadow-md mx-auto" style={{ maxHeight: '300px', objectFit: 'contain' }} />
+                </div>
+              )}
+            </div>
+
+            {showMedicineInput && ( // Display manual medicine input after image upload
+              <div className="mt-8">
+                <h3 className="text-2xl font-bold text-gray-900 mb-4">Confirm Medicines (Simulated OCR)</h3>
+                <p className="text-gray-700 mb-4">
+                  Please enter the medicine names from the prescription, separated by commas.
+                  (In a real app, this would be automatically extracted!)
+                </p>
+                <textarea
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 mb-6"
+                  rows="4"
+                  placeholder="e.g., Paracetamol 500mg, Amoxicillin 250mg, Ibuprofen 400mg"
+                  value={extractedMedicinesInput}
+                  onChange={(e) => { setExtractedMedicinesInput(e.target.value); setFoundPharmacies([]); setConfirmationMessage(null); }} // Clear results/messages on input change
+                ></textarea>
+                <button
+                  onClick={findPharmacies}
+                  disabled={loadingPharmacies} // Disable button while loading
+                  className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                    loadingPharmacies ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {loadingPharmacies ? 'Finding Pharmacies...' : 'Find Pharmacies'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {foundPharmacies.length > 0 && ( // Display found pharmacies if any
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">Pharmacies with Your Medicines</h3>
+              <div className="space-y-6">
+                {foundPharmacies.map((pharmacy, index) => (
+                  <div key={index} className="border-b border-gray-200 pb-6 last:border-b-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xl font-bold text-gray-900">{pharmacy.name}</h4>
+                      <span className="text-blue-600 font-semibold text-lg">📍 {pharmacy.distance}</span>
+                    </div>
+                    <p className="text-gray-700 mb-3">Location: {pharmacy.location}</p>
+                    <p className="text-gray-600 text-sm">
+                      Available Medicines (Partial Match):{' '}
+                      <span className="font-medium text-green-700">
+                        {/* Filters and displays only the matching medicines from the pharmacy's stock */}
+                        {pharmacy.medicines.filter(med =>
+                          extractedMedicinesInput.toLowerCase().split(',').map(s => s.trim()).some(s => med.toLowerCase().includes(s))
+                        ).join(', ')}
+                      </span>
+                    </p>
+                    <button className="mt-4 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                      View Details / Order
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* This block is now handled by confirmationMessage state, so no explicit empty state needed here */}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// New Login Page Component
+const LoginPage = ({ onLoginSuccess }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    // Simulate API call for login
+    setTimeout(() => {
+      if (email === 'Saifullahsayyed' && password === 'Saif25@032005') {
+        onLoginSuccess(); // Call the parent function to set isLoggedIn to true
+      } else {
+        setError('Invalid username/email or password.');
+      }
+      setLoading(false);
+    }, 1000); // Simulate network delay
+  };
+
+  const handleGoogleLogin = () => {
+    setLoading(true);
+    setError('');
+    // Simulate Google login success
+    setTimeout(() => {
+      onLoginSuccess(); // Call the parent function to set isLoggedIn to true
+      setLoading(false);
+    }, 1000); // Simulate network delay
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-cyan-50 px-4">
+      <div className="bg-white rounded-3xl p-8 shadow-2xl w-full max-w-md">
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
+            <span className="text-white font-bold text-2xl">M</span>
+          </div>
+        </div>
+        <h2 className="text-3xl font-bold text-gray-900 text-center mb-8">
+          Welcome to MediCare Connect
+        </h2>
+
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              Email ID / Username
+            </label>
+            <input
+              type="text"
+              id="email"
+              className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Saifullahsayyed"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <input
+              type="password"
+              id="password"
+              className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Saif25@032005"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          {error && (
+            <p className="text-red-600 text-sm text-center -mt-2">{error}</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full py-3 px-4 rounded-xl font-semibold text-white transition-colors ${
+              loading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {loading ? 'Logging In...' : 'Login'}
+          </button>
+        </form>
+
+        <div className="relative my-8">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-300"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">Or continue with</span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className={`w-full flex items-center justify-center py-3 px-4 border border-gray-300 rounded-xl shadow-sm font-semibold text-gray-700 transition-colors ${
+            loading ? 'bg-gray-100 cursor-not-allowed' : 'hover:bg-gray-50'
+          }`}
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google icon" className="w-5 h-5 mr-2" />
+          {loading ? 'Logging In...' : 'Login with Google'}
+        </button>
+
+        <p className="mt-6 text-center text-sm text-gray-600">
+          Don't have an account? <a href="#" className="font-semibold text-blue-600 hover:text-blue-800">Sign up</a>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// --- New NGO/Charity Page Component ---
+const NGOCharityPage = ({ onBack }) => {
+  const [selectedState, setSelectedState] = useState('');
+  const [selectedCity, setSelectedCity] = useState('');
+  const [filteredNGOs, setFilteredNGOs] = useState([]);
+  const [loadingNGOs, setLoadingNGOs] = useState(false);
+  const [confirmationMessage, setConfirmationMessage] = useState(null);
+
+
+  const statesAndCities = {
+    'Maharashtra': ['Mumbai', 'Pune', 'Nagpur'],
+    'Delhi': ['New Delhi', 'Ghaziabad', 'Noida'],
+    'Karnataka': ['Bangalore', 'Mysore', 'Hubli'],
+    'Tamil Nadu': ['Chennai', 'Coimbatore', 'Madurai'],
+    'West Bengal': ['Kolkata', 'Howrah', 'Durgapur'],
+  };
+
+  const ngosData = [
+    // Mumbai, Maharashtra
+    { name: 'Mumbai Medical Aid', state: 'Maharashtra', city: 'Mumbai', description: 'Provides financial aid for critical medical treatments.', contact: 'info@mumbaimedicalaid.org', phone: '+91-22-12345678' },
+    { name: 'HealthBridge Foundation', state: 'Maharashtra', city: 'Mumbai', description: 'Supports underprivileged patients with treatment costs.', contact: 'contact@healthbridge.in', phone: '+91-22-87654321' },
+    { name: 'Care for All Trust', state: 'Maharashtra', city: 'Mumbai', description: 'Offers free medical camps and treatment assistance.', contact: 'careforall@example.com', phone: '+91-22-11223344' },
+    // Pune, Maharashtra
+    { name: 'Pune Health Support', state: 'Maharashtra', city: 'Pune', description: 'Dedicated to funding surgeries and long-term care.', contact: 'info@punehealth.org', phone: '+91-20-98765432' },
+    { name: 'Sahyog Foundation', state: 'Maharashtra', city: 'Pune', description: 'Assists with cancer treatment and rehabilitation.', contact: 'sahyog@foundation.in', phone: '+91-20-12345678' },
+    { name: 'Jeevan Dhara', state: 'Maharashtra', city: 'Pune', description: 'Provides medical aid for chronic diseases.', contact: 'jeevandhara@ngo.org', phone: '+91-20-23456789' },
+    // New Delhi, Delhi
+    { name: 'Delhi MedCare', state: 'Delhi', city: 'New Delhi', description: 'Emergency medical funding and patient support.', contact: 'contact@delhimedcare.org', phone: '+91-11-23456789' },
+    { name: 'Hope for Health India', state: 'Delhi', city: 'New Delhi', description: 'Focuses on child healthcare and rare diseases.', contact: 'hopeforhealth@india.com', phone: '+91-11-87654321' },
+    { name: 'Capital Aid Foundation', state: 'Delhi', city: 'New Delhi', description: 'Supports medical research and patient welfare.', contact: 'capitalaid@foundation.org', phone: '+91-11-11223344' },
+    // Bangalore, Karnataka
+    { name: 'Bengaluru Health Trust', state: 'Karnataka', city: 'Bangalore', description: 'Provides financial assistance for critical illnesses.', contact: 'info@bengaluruhealth.org', phone: '+91-80-12345678' },
+    { name: 'Karnataka Medical Aid', state: 'Karnataka', city: 'Bangalore', description: 'Aids patients with high-cost treatments.', contact: 'contact@karnatakamedaid.in', phone: '+91-80-87654321' },
+    { name: 'Garden City Charities', state: 'Karnataka', city: 'Bangalore', description: 'Supports medical camps and health awareness.', contact: 'gardencity@charities.org', phone: '+91-80-11223344' },
+    // Chennai, Tamil Nadu
+    { name: 'Chennai Lifeline', state: 'Tamil Nadu', city: 'Chennai', description: 'Emergency medical funding and patient support.', contact: 'contact@chennailifeline.org', phone: '+91-44-23456789' },
+    { name: 'Tamil Nadu Health Fund', state: 'Tamil Nadu', city: 'Chennai', description: 'Provides financial aid for critical medical treatments.', contact: 'info@tnhealthfund.org', phone: '+91-44-87654321' },
+    { name: 'Southern Star Foundation', state: 'Tamil Nadu', city: 'Chennai', description: 'Supports underprivileged patients with treatment costs.', contact: 'southernstar@example.com', phone: '+91-44-11223344' },
+    // Kolkata, West Bengal
+    { name: 'Kolkata Compassion', state: 'West Bengal', city: 'Kolkata', description: 'Dedicated to funding surgeries and long-term care.', contact: 'info@kolkatacompassion.org', phone: '+91-33-98765432' },
+    { name: 'Bengal Medical Aid', state: 'West Bengal', city: 'Kolkata', description: 'Assists with cancer treatment and rehabilitation.', contact: 'bengalmed@aid.in', phone: '+91-33-12345678' },
+    { name: 'City of Joy Foundation', state: 'West Bengal', city: 'Kolkata', description: 'Provides medical aid for chronic diseases.', contact: 'cityofjoy@ngo.org', phone: '+91-33-23456789' },
+  ];
+
+  const handleSearchNGOs = () => {
+    setLoadingNGOs(true);
+    setFilteredNGOs([]);
+    setConfirmationMessage({ type: 'info', text: 'Searching for NGOs and Charities...' });
+
+    setTimeout(() => {
+      if (selectedState && selectedCity) {
+        const filtered = ngosData.filter(ngo =>
+          ngo.state === selectedState && ngo.city === selectedCity
+        );
+        setFilteredNGOs(filtered);
+        if (filtered.length > 0) {
+          setConfirmationMessage({ type: 'success', text: `Found ${filtered.length} organizations in ${selectedCity}, ${selectedState}.` });
+        } else {
+          setConfirmationMessage({ type: 'info', text: `No organizations found for ${selectedCity}, ${selectedState}.` });
+        }
+      } else {
+        setConfirmationMessage({ type: 'error', text: 'Please select both a State and a City.' });
+      }
+      setLoadingNGOs(false);
+      setTimeout(() => setConfirmationMessage(null), 3000);
+    }, 1500); // Simulate network delay
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header is rendered by App component */}
+
+      <div className="pt-20 px-4 pb-8">
+        <div className="max-w-6xl mx-auto">
+          {confirmationMessage && (
+            <div className={`mb-4 p-3 rounded-lg text-center font-semibold ${
+              confirmationMessage.type === 'success' ? 'bg-green-100 text-green-800' :
+              confirmationMessage.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
+            }`}>
+              {confirmationMessage.text}
+            </div>
+          )}
+
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Find NGOs & Charities</h1>
+            <p className="text-xl text-gray-600">Locate organizations that provide financial support for medical treatments.</p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">Select Location</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <label htmlFor="state-select" className="block text-gray-700 font-semibold mb-2">State</label>
+                <select
+                  id="state-select"
+                  value={selectedState}
+                  onChange={(e) => {
+                    setSelectedState(e.target.value);
+                    setSelectedCity(''); // Reset city when state changes
+                    setFilteredNGOs([]); // Clear previous results
+                    setConfirmationMessage(null); // Clear message on new selection
+                  }}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select State</option>
+                  {Object.keys(statesAndCities).map(state => (
+                    <option key={state} value={state}>{state}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="city-select" className="block text-gray-700 font-semibold mb-2">City</label>
+                <select
+                  id="city-select"
+                  value={selectedCity}
+                  onChange={(e) => {
+                    setSelectedCity(e.target.value);
+                    setFilteredNGOs([]); // Clear previous results
+                    setConfirmationMessage(null); // Clear message on new selection
+                  }}
+                  disabled={!selectedState}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select City</option>
+                  {selectedState && statesAndCities[selectedState].map(city => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <button
+              onClick={handleSearchNGOs}
+              disabled={loadingNGOs || !selectedState || !selectedCity}
+              className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                loadingNGOs || !selectedState || !selectedCity ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {loadingNGOs ? 'Searching...' : 'Search NGOs & Charities'}
+            </button>
+          </div>
+
+          {filteredNGOs.length > 0 && (
+            <div className="bg-white rounded-2xl p-8 shadow-lg">
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">
+                NGOs & Charities in {selectedCity}, {selectedState} ({filteredNGOs.length})
+              </h3>
+              <div className="space-y-6">
+                {filteredNGOs.map((ngo, index) => (
+                  <div key={index} className="border-b border-gray-200 pb-6 last:border-b-0">
+                    <h4 className="text-xl font-bold text-blue-600 mb-2">{ngo.name}</h4>
+                    <p className="text-gray-700 mb-3">{ngo.description}</p>
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p>✉️ Contact: <a href={`mailto:${ngo.contact}`} className="text-blue-500 hover:underline">{ngo.contact}</a></p>
+                      <p>📞 Phone: <a href={`tel:${ngo.phone}`} className="text-blue-500 hover:underline">{ngo.phone}</a></p>
+                    </div>
+                    <button className="mt-4 w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                      Learn More / Donate
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedState && selectedCity && filteredNGOs.length === 0 && !loadingNGOs && (
+            <div className="bg-white rounded-2xl p-8 shadow-lg text-center text-gray-600">
+              <p className="text-lg">No NGOs or charities found for {selectedCity}, {selectedState}. Please try a different location or check back later.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main App Component ---
+// This is the main entry point of the application, handling routing and global state.
+export default function App() {
+  const [currentPage, setCurrentPage] = useState('home'); // Controls which page is currently displayed
+  const [isScrolled, setIsScrolled] = useState(false); // State to control header styling on scroll
+  const [isLoggedIn, setIsLoggedIn] = useState(false); // Authentication state
+
+  // Effect to handle header styling based on scroll position
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 50); // Set scrolled state if scroll position is beyond 50px
+    };
+    window.addEventListener('scroll', handleScroll); // Add scroll event listener
+    return () => window.removeEventListener('scroll', handleScroll); // Clean up listener
+  }, []);
+
+  // Handler for navigating between different pages of the application
+  const handleNavigation = (page) => {
+    setCurrentPage(page);
+  };
+
+  // Callback function for successful login from the LoginPage
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true); // Set logged in state to true
+    setCurrentPage('home'); // Redirect to the home page after successful login
+  };
+
+  // Conditional rendering based on authentication status.
+  // If not logged in, only the LoginPage is rendered.
+  if (!isLoggedIn) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // If logged in, the main application content is rendered, wrapped in CartProvider.
+  return (
+    <CartProvider>
+      {/* Header is always visible and receives current page and navigation handler */}
+      <Header onBack={() => setCurrentPage('home')} isScrolled={isScrolled} currentPage={currentPage} onNavigate={handleNavigation} />
+      {/* Renders the current page based on 'currentPage' state */}
+      {(() => {
+        switch (currentPage) {
+          case 'medicine':
+            return <MedicinePage onBack={() => setCurrentPage('home')} />;
+          case 'doctor':
+            return <DoctorPage onBack={() => setCurrentPage('home')} />;
+          case 'ambulance':
+            return <AmbulancePage onBack={() => setCurrentPage('home')} />;
+          case 'telehealth':
+            return <TelehealthPage onBack={() => setCurrentPage('home')} />;
+          case 'government-aid':
+            return <GovernmentAidPage onBack={() => setCurrentPage('home')} />;
+          case 'prescription':
+            return <PrescriptionPage onBack={() => setCurrentPage('home')} />;
+          case 'ngo-charity':
+            return <NGOCharityPage onBack={() => setCurrentPage('home')} />;
+          case 'cart':
+            return <CartPage onBack={() => setCurrentPage('medicine')} onProceedToCheckout={() => setCurrentPage('checkout')} />;
+          case 'checkout':
+            return <CheckoutPage onBack={() => setCurrentPage('cart')} onOrderPlaced={() => setCurrentPage('order-tracking')} />;
+          case 'order-tracking':
+            return <OrderTrackingPage onBack={() => setCurrentPage('home')} />;
+          case 'symptom-checker':
+            return <SymptomCheckerPage onBack={() => setCurrentPage('home')} />;
+          case 'health-reminders':
+            return <RemindersPage onBack={() => setCurrentPage('home')} />;
+          case 'health-records':
+            return <HealthRecordsPage onBack={() => setCurrentPage('home')} />;
+          default:
+            return <HomePage onNavigate={handleNavigation} isScrolled={isScrolled} />;
+        }
+      })()}
+    </CartProvider>
+  );
+}
